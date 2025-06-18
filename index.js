@@ -91,6 +91,22 @@ app.post('/api/persons', morgan(':method :url :status :res[content-length] - :re
     response.status(200).json(newPerson);
 })
 
+app.put('/api/persons/:id', (request, response) => {
+    const id = Number(request.params.id);
+    const number = request.body.number;
+    const person = data.find(p => p.id === id);
+    if (!person) {
+        response.status(404).json({error: 'Information of the person has already been removed from server'})
+        return;
+    }
+    if (!number) {
+        return response.status(400).json({error: 'The number field is required'});
+    }
+    const updatedNumber = {...person, number};
+    data = data.map(p => p.id === id ? updatedNumber : p);
+    response.status(200).json(updatedNumber);
+})
+
 const PORT = process.env.PORT || 3001
 app.listen(PORT, () => {
     console.log(`Server running on PORT: ${PORT}`)
