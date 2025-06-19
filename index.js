@@ -16,6 +16,9 @@ const errorHandler = (error, request, response, next) => {
     if (error.name === "CastError") {
         return response.status(400).send({error: error.message});
     }
+    if (error.name === "ValidationError") {
+        return response.status(400).json({error: error.message});
+    }
     next(error);
 };
 
@@ -97,7 +100,7 @@ app.post('/api/persons', morgan(':method :url :status :res[content-length] - :re
 app.put('/api/persons/:id', (request, response, next) => {
     const id = request.params.id;
     const person = request.body;
-    Person.findByIdAndUpdate(id, person, {new: true})
+    Person.findByIdAndUpdate(id, person, {new: true, runValidators: true, context: 'query'})
         .then(updatedPerson => {
             response.json(updatedPerson);
         })
