@@ -2,6 +2,7 @@ const express = require('express');
 const app = express();
 const morgan = require('morgan');
 const dotenv = require('dotenv');
+const { default: mongoose } = require('mongoose');
 dotenv.config();
 
 app.use(express.static('dist'));
@@ -9,31 +10,15 @@ app.use(express.json());
 app.use(morgan('tiny', {skip: (req, res) => req.method === 'POST'}));
 morgan.token('data', (req) => JSON.stringify(req.body));
 
-let data = [
-    { 
-      "id": 1,
-      "name": "Arto Hellas", 
-      "number": "040-123456"
-    },
-    { 
-      "id": 2,
-      "name": "Ada Lovelace", 
-      "number": "39-44-5323523"
-    },
-    { 
-      "id": 3,
-      "name": "Dan Abramov", 
-      "number": "12-43-234345"
-    },
-    { 
-      "id": 4,
-      "name": "Mary Poppendieck", 
-      "number": "39-23-6423122"
-    }
-];
+const Person = require('./models/person.js');
 
 const defineError = (name, number) => {
-    const dataError = data.some(person => person.name === name);
+    Person.find({name})
+        .then(result => {
+            if (result) {
+                return 'The name must be unique';
+            }
+        })
     if (!name && !number) {
         return 'Both fields are required';
     }
@@ -43,30 +28,35 @@ const defineError = (name, number) => {
     else if (!number) {
         return 'The number field is required';
     }
-    if (dataError) {
-        return 'Name must be unique';
-    }
     return null;
 };
 
 app.get('/api/persons', (request, response) => {
-    response.json(data);
+    Person.find({})
+        .then(result => {
+            response.json(result);
+        })
 });
 
 app.get('/info', (request, response) => {
     const date = new Date();
-    response.send(`<p>Phonebook has info for ${data.length} people </p> <p>${date}</p>`);
+    Person.find({})
+        .then(result => {
+            response.send(`<p>Phonebook has info for ${result.length} people </p> <p>${date}</p>`);
+        })
 });
 
 app.get('/api/persons/:id', (request, response) => {
-    const id = Number(request.params.id);
-    const person = data.find(person => person.id === id);
-    if (person) {
-        response.json(person);
-    }
-    else {
-        response.status(404).end();
-    }
+    const id = request.params.id;
+    Person.find({_id: id})
+        .then(result => {
+            if (result) {
+                response.json(result);
+            }
+            else {
+                response.status(404).end();
+            }
+        })
 });
 
 app.delete('/api/persons/:id', (request, response) => {
@@ -85,9 +75,8 @@ app.post('/api/persons', morgan(':method :url :status :res[content-length] - :re
         response.status(400).json({error: `${error}`});
         return;
     }
-    const id = Math.floor(Math.random() * 1000000);
-    const newPerson = {...request.body, id};
-    data = data.concat(newPerson);
+    const newPerson = new Person(request.body);
+    newPerson.save();
     response.status(200).json(newPerson);
 })
 
