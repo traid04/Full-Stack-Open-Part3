@@ -2,7 +2,6 @@ const express = require('express');
 const app = express();
 const morgan = require('morgan');
 const dotenv = require('dotenv');
-const { default: mongoose } = require('mongoose');
 dotenv.config();
 
 app.use(express.static('dist'));
@@ -12,23 +11,12 @@ morgan.token('data', (req) => JSON.stringify(req.body));
 
 const Person = require('./models/person.js');
 
-const defineError = (name, number) => {
-    Person.find({name})
-        .then(result => {
-            if (result) {
-                return 'The name must be unique';
-            }
-        })
-    if (!name && !number) {
-        return 'Both fields are required';
+const errorHandler = (error, request, response, next) => {
+    console.error(error.message);
+    if (error.name === "CastError") {
+        return response.status(400).send({error: error.message});
     }
-    else if (!name) {
-        return 'The name field is required';
-    }
-    else if (!number) {
-        return 'The number field is required';
-    }
-    return null;
+    next(error);
 };
 
 app.get('/api/persons', (request, response) => {
@@ -46,9 +34,9 @@ app.get('/info', (request, response) => {
         })
 });
 
-app.get('/api/persons/:id', (request, response) => {
+app.get('/api/persons/:id', (request, response, next) => {
     const id = request.params.id;
-    Person.find({_id: id})
+    Person.findById(id)
         .then(result => {
             if (result) {
                 response.json(result);
@@ -57,44 +45,66 @@ app.get('/api/persons/:id', (request, response) => {
                 response.status(404).end();
             }
         })
+        .catch(error => next(error))
 });
 
-app.delete('/api/persons/:id', (request, response) => {
-    const id = Number(request.params.id);
-    data = data.filter(person => person.id !== id);
-    response.status(204).end();
+app.delete('/api/persons/:id', (request, response, next) => {
+    const id = request.params.id;
+    Person.findByIdAndDelete(id)
+        .then(result => {
+            if (result) {
+                response.status(204).end();
+            }
+            else {
+                response.status(404).send({error: 'This user has already been removed from server'})
+            }
+        })
+        .catch(error => next(error))
 });
 
 
-app.post('/api/persons', morgan(':method :url :status :res[content-length] - :response-time ms :data'), (request, response) => {
+app.post('/api/persons', morgan(':method :url :status :res[content-length] - :response-time ms :data'), (request, response, next) => {
     const name = request.body.name;
     const number = request.body.number;
-    const error = defineError(name, number);
-
-    if (error) {
-        response.status(400).json({error: `${error}`});
+    if (!name && !number) {
+        response.status(400).json({error: 'Both fields are required'});
+        return;
+    }
+    else if (!name) {
+        response.status(400).json({error: 'The name field is required'});
+        return;
+    }
+    else if (!number) {
+        response.status(400).json({error: 'The number field is required'});
         return;
     }
     const newPerson = new Person(request.body);
-    newPerson.save();
-    response.status(200).json(newPerson);
+    Person.findOne({name})
+        .then(result => {
+            if (result) {
+                response.status(400).json({error: 'The name must be unique'});
+                return;
+            }
+            newPerson.save()
+                .then(result => {
+                    response.status(200).json(result);
+                })
+                .catch(error => next(error));
+        })
+        .catch(error => next(error));
 })
 
-app.put('/api/persons/:id', (request, response) => {
-    const id = Number(request.params.id);
-    const number = request.body.number;
-    const person = data.find(p => p.id === id);
-    if (!person) {
-        response.status(404).json({error: 'Information of the person has already been removed from server'})
-        return;
-    }
-    if (!number) {
-        return response.status(400).json({error: 'The number field is required'});
-    }
-    const updatedNumber = {...person, number};
-    data = data.map(p => p.id === id ? updatedNumber : p);
-    response.status(200).json(updatedNumber);
+app.put('/api/persons/:id', (request, response, next) => {
+    const id = request.params.id;
+    const person = request.body;
+    Person.findByIdAndUpdate(id, person, {new: true})
+        .then(updatedPerson => {
+            response.json(updatedPerson);
+        })
+        .catch(error => next(error));
 })
+
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 3001
 app.listen(PORT, () => {
